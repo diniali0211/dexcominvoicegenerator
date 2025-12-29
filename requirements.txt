@@ -1,7 +1,5 @@
 streamlit
 pandas
-numpy
 fpdf
-python-docx
+num2words
 openpyxl
-xlsxwriter
