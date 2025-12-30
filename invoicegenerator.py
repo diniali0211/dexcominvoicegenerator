@@ -285,9 +285,10 @@ def export_pdf(df, invoice_month, department):
     sen = int(round((total - ringgit) * 100))
 
     words = (
-        f"{num2words(ringgit).title()} Ringgit"
-        + (f" And {num2words(sen).title()} Sen" if sen else "")
-    )
+    f"{num2words(ringgit, lang='en').title()} Ringgit"
+    + (f" And {num2words(sen, lang='en').title()} Sen" if sen else "")
+)
+
 
     pdf.set_font("Arial", "", 9)
     pdf.multi_cell(0, 5, f"Ringgit Malaysia:\n{words} Only.")
