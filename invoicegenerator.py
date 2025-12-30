@@ -4,13 +4,13 @@ from io import BytesIO
 from fpdf import FPDF
 from datetime import datetime
 from num2words import num2words
+import re
 
 # ─────────────────────────────────────────────────────
 # Page config
 # ─────────────────────────────────────────────────────
 st.set_page_config(page_title="Payroll Summary & Invoice", layout="wide")
 st.title("🧾 Invoice Generator")
-
 
 # ─────────────────────────────────────────────────────
 # Upload Payroll Summary Excel
@@ -22,13 +22,30 @@ uploaded = st.file_uploader(
 
 if not uploaded:
     st.stop()
-import os
-import re
 
+# ─────────────────────────────────────────────────────
+# Detect department from filename
+# ─────────────────────────────────────────────────────
 filename = uploaded.name.upper()
-
 dept_match = re.match(r"([A-Z]+)", filename)
 department = dept_match.group(1) if dept_match else "UNKNOWN"
+
+# ─────────────────────────────────────────────────────
+# Invoice Month Controls
+# ─────────────────────────────────────────────────────
+invoice_month_base = st.text_input(
+    "Invoice Month",
+    value=f"Month of {datetime.now().strftime('%B %Y')}"
+)
+
+is_new_hire = st.checkbox("New Hire Invoice")
+
+invoice_month = (
+    f"{invoice_month_base} - NEW HIRE"
+    if is_new_hire
+    else invoice_month_base
+)
+
 
 # ─────────────────────────────────────────────────────
 # Read raw sheet to detect sections
@@ -67,9 +84,6 @@ df = pd.read_excel(
 
 df.columns = [str(c).strip() for c in df.columns]
 
-# ─────────────────────────────────────────────────────
-# Helper
-# ─────────────────────────────────────────────────────
 def numcol(name):
     if name in df.columns:
         return pd.to_numeric(df[name], errors="coerce").fillna(0.0)
@@ -133,7 +147,6 @@ insurance_qty = st.number_input(
 )
 
 insurance_amount = insurance_qty * insurance_fee
-
 mgmt_fee = round((wages + ot_sum + emp_stat + hrdf) * mgmt_rate, 2)
 
 # ─────────────────────────────────────────────────────
@@ -154,9 +167,10 @@ sst = round(subtotal * sst_rate, 2)
 total = round(subtotal + sst, 2)
 
 # ─────────────────────────────────────────────────────
-# Display
+# Preview
 # ─────────────────────────────────────────────────────
-st.subheader("🧾 Invoice Preview")
+st.subheader(f"🧾 Invoice Preview — {department}")
+st.markdown(f"**{invoice_month}**")
 
 st.dataframe(
     invoice_df.style.format({
@@ -173,15 +187,17 @@ st.markdown(f"## **TOTAL (Inclusive SST): RM {total:,.2f}**")
 # ─────────────────────────────────────────────────────
 # PDF Export
 # ─────────────────────────────────────────────────────
-def export_pdf(df):
+def export_pdf(df, invoice_month, department):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
 
+    # Header
     pdf.set_font("Arial", "B", 16)
     pdf.cell(0, 10, "SUMMARY", ln=True, align="C")
     pdf.ln(4)
 
+    # Company block
     pdf.set_font("Arial", "", 9)
     pdf.multi_cell(
         90, 5,
@@ -191,24 +207,25 @@ def export_pdf(df):
         "Attention: HR Department"
     )
 
-    pdf.set_xy(120, 30)
-    pdf.multi_cell(
-        0, 5,
-        f"Summary No.:\n"
-        f"Date: {datetime.now().strftime('%d %B %Y')}\n"
-        f"Terms:\n"
-        f"PO Number:"
-    )
+    left_block_bottom = pdf.get_y()
 
-    pdf.ln(6)
-    pdf.set_font("Arial", "B", 11)
+    # Date (right)
+    pdf.set_xy(120, 40)
+    pdf.cell(0, 5, f"Date: {datetime.now().strftime('%d %B %Y')}", ln=True)
+
+    # Move safely below header blocks
+    pdf.set_y(left_block_bottom + 10)
+
+    # Invoice title
+    pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 8, f"Payroll Invoice - {department}", ln=True, align="C")
 
-
-    pdf.set_font("Arial", "", 10)
-    pdf.cell(0, 8, "Month of December 2025", ln=True, align="C")
+    # Month (BOLD)
+    pdf.set_font("Arial", "B", 11)
+    pdf.cell(0, 8, invoice_month, ln=True, align="C")
     pdf.ln(4)
 
+    # Table
     pdf.set_font("Arial", "B", 9)
     widths = [10, 85, 15, 30, 30]
     headers = ["No.", "Description", "Qty", "U.Price", "Amount"]
@@ -226,6 +243,7 @@ def export_pdf(df):
         pdf.cell(widths[4], 8, f"{r['Amount']:,.2f}", 1, align="R")
         pdf.ln()
 
+    # Totals
     pdf.ln(4)
     pdf.cell(140, 6, "Sub - Total", 0)
     pdf.cell(40, 6, f"RM {subtotal:,.2f}", 0, ln=True, align="R")
@@ -237,23 +255,21 @@ def export_pdf(df):
     pdf.cell(140, 7, "Total (Inclusive SST)", 0)
     pdf.cell(40, 7, f"RM {total:,.2f}", 0, ln=True, align="R")
 
+    # Amount in words
     pdf.ln(6)
-
     ringgit = int(total)
     sen = int(round((total - ringgit) * 100))
 
-    if sen > 0:
-        words = (
-            f"{num2words(ringgit).title()} Ringgit "
-            f"And {num2words(sen).title()} Sen"
-        )
-    else:
-        words = f"{num2words(ringgit).title()} Ringgit"
+    words = (
+        f"{num2words(ringgit).title()} Ringgit"
+        + (f" And {num2words(sen).title()} Sen" if sen else "")
+    )
 
     pdf.set_font("Arial", "", 9)
     pdf.multi_cell(0, 5, f"Ringgit Malaysia:\n{words} Only.")
     pdf.ln(14)
 
+    # Signatures
     pdf.cell(80, 6, "______________________________", 0, 0, "C")
     pdf.cell(30, 6, "", 0)
     pdf.cell(80, 6, "______________________________", 0, 1, "C")
@@ -269,8 +285,9 @@ def export_pdf(df):
 # ─────────────────────────────────────────────────────
 st.download_button(
     "📄 Download Invoice (PDF)",
-    data=export_pdf(invoice_df),
-    file_name=f"Invoice_{datetime.now().strftime('%Y%m%d')}.pdf",
+    data=export_pdf(invoice_df, invoice_month, department),
+    file_name=f"Invoice_{department}_{invoice_month.replace(' ', '_')}.pdf",
     mime="application/pdf",
     use_container_width=True
 )
+
