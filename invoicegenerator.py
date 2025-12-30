@@ -1,5 +1,3 @@
-
-
 import streamlit as st
 import pandas as pd
 from io import BytesIO
@@ -13,6 +11,7 @@ from num2words import num2words
 st.set_page_config(page_title="Payroll Summary & Invoice", layout="wide")
 st.title("🧾 Invoice Generator")
 
+
 # ─────────────────────────────────────────────────────
 # Upload Payroll Summary Excel
 # ─────────────────────────────────────────────────────
@@ -23,6 +22,13 @@ uploaded = st.file_uploader(
 
 if not uploaded:
     st.stop()
+import os
+import re
+
+filename = uploaded.name.upper()
+
+dept_match = re.match(r"([A-Z]+)", filename)
+department = dept_match.group(1) if dept_match else "UNKNOWN"
 
 # ─────────────────────────────────────────────────────
 # Read raw sheet to detect sections
@@ -196,7 +202,8 @@ def export_pdf(df):
 
     pdf.ln(6)
     pdf.set_font("Arial", "B", 11)
-    pdf.cell(0, 8, "Payroll Invoice - APPLICATOR", ln=True, align="C")
+    pdf.cell(0, 8, f"Payroll Invoice - {department}", ln=True, align="C")
+
 
     pdf.set_font("Arial", "", 10)
     pdf.cell(0, 8, "Month of December 2025", ln=True, align="C")
