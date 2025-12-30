@@ -286,7 +286,7 @@ def export_pdf(df, invoice_month, department):
 
     words = (
     f"{num2words(ringgit, lang='en').title()} Ringgit"
-    + (f" And {num2words(sen, lang='en').title()} Sen" if sen else "")
+    + (f" And {num2words(sen, lang='en').title()} Cents" if sen else "")
 )
 
 
@@ -315,4 +315,5 @@ st.download_button(
     mime="application/pdf",
     use_container_width=True
 )
+
 
