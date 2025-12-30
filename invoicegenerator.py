@@ -192,26 +192,50 @@ def export_pdf(df, invoice_month, department):
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
 
-    # Header
+    # ───────────── Page Title ─────────────
     pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, "SUMMARY", ln=True, align="C")
-    pdf.ln(4)
+    pdf.cell(0, 12, "SUMMARY", ln=True, align="C")
+    pdf.ln(6)
 
-    # Company block
+
+    # Header
+    # ───────────── Header Blocks (Aligned) ─────────────
+
     pdf.set_font("Arial", "", 9)
+
+    # Capture starting Y for alignment
+    header_y = pdf.get_y()
+
+    # Left: Company details
     pdf.multi_cell(
         90, 5,
         "DEXCOM MALAYSIA SDN BHD\n"
         "PMT 818, Persiaran Cassia Selatan 3, Taman Perindustrian Batu Kawan,\n"
+        "Batu Kawan,\n"
         "Bandar Cassia, Batu Kawan, 14110 Simpang Ampat, Pulau Pinang, Malaysia.\n"
         "Attention: HR Department"
     )
 
+    # Capture bottom of left block
     left_block_bottom = pdf.get_y()
 
-    # Date (right)
-    pdf.set_xy(120, 40)
-    pdf.cell(0, 5, f"Date: {datetime.now().strftime('%d %B %Y')}", ln=True)
+    # Right: Invoice meta (aligned to top of left block)
+    pdf.set_xy(120, header_y)
+    pdf.set_font("Arial", "B", 9)
+
+    line_gap = 6
+    pdf.cell(0, line_gap, "Summary No.:", ln=True)
+    pdf.set_x(120)
+    pdf.cell(0, line_gap, "Date:", ln=True)
+    pdf.set_x(120)
+    pdf.cell(0, line_gap, "Terms:", ln=True)
+    pdf.set_x(120)
+    pdf.cell(0, line_gap, "PO Number:", ln=True)
+
+    # Move cursor below both blocks safely
+    pdf.set_y(max(left_block_bottom, pdf.get_y()) + 10)
+
+
 
     # Move safely below header blocks
     pdf.set_y(left_block_bottom + 10)
