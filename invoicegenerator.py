@@ -27,8 +27,16 @@ if not uploaded:
 # Detect department from filename
 # ─────────────────────────────────────────────────────
 filename = uploaded.name.upper()
-dept_match = re.match(r"([A-Z]+)", filename)
-department = dept_match.group(1) if dept_match else "UNKNOWN"
+
+# Capture department name before first underscore
+dept_match = re.match(r"([A-Z ]+?)_", filename)
+
+department = (
+    dept_match.group(1).strip()
+    if dept_match
+    else "UNKNOWN"
+)
+
 
 # ─────────────────────────────────────────────────────
 # Invoice Month Controls
@@ -286,7 +294,7 @@ def export_pdf(df, invoice_month, department):
 
     words = (
     f"{num2words(ringgit, lang='en').title()} Ringgit"
-    + (f" And {num2words(sen, lang='en').title()} Cents" if sen else "")
+    + (f" And {num2words(sen, lang='en').title()} Sen" if sen else "")
 )
 
 
