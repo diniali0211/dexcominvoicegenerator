@@ -28,7 +28,6 @@ if not uploaded:
 # ─────────────────────────────────────────────────────
 filename = uploaded.name.upper()
 
-# Capture department name before first underscore
 dept_match = re.match(r"([A-Z ]+?)_", filename)
 
 department = (
@@ -91,6 +90,10 @@ df = pd.read_excel(
 )
 
 df.columns = [str(c).strip() for c in df.columns]
+
+# FIX: Drop blank rows (e.g. blank rows before ABSCOND section)
+# that were being included in the active employee count
+df = df[pd.to_numeric(df['Emp No'], errors='coerce').notna()].reset_index(drop=True)
 
 def numcol(name):
     if name in df.columns:
@@ -179,6 +182,7 @@ total = round(subtotal + sst, 2)
 # ─────────────────────────────────────────────────────
 st.subheader(f"🧾 Invoice Preview — {department}")
 st.markdown(f"**{invoice_month}**")
+st.markdown(f"**Active Headcount (after blank-row filter):** {active_headcount}")
 
 st.dataframe(
     invoice_df.style.format({
@@ -205,16 +209,11 @@ def export_pdf(df, invoice_month, department):
     pdf.cell(0, 12, "SUMMARY", ln=True, align="C")
     pdf.ln(6)
 
-
-    # Header
     # ───────────── Header Blocks (Aligned) ─────────────
-
     pdf.set_font("Arial", "", 9)
 
-    # Capture starting Y for alignment
     header_y = pdf.get_y()
 
-    # Left: Company details
     pdf.multi_cell(
         90, 5,
         "DEXCOM MALAYSIA SDN BHD\n"
@@ -224,10 +223,8 @@ def export_pdf(df, invoice_month, department):
         "Attention: HR Department"
     )
 
-    # Capture bottom of left block
     left_block_bottom = pdf.get_y()
 
-    # Right: Invoice meta (aligned to top of left block)
     pdf.set_xy(120, header_y)
     pdf.set_font("Arial", "B", 9)
 
@@ -240,24 +237,18 @@ def export_pdf(df, invoice_month, department):
     pdf.set_x(120)
     pdf.cell(0, line_gap, "PO Number:", ln=True)
 
-    # Move cursor below both blocks safely
     pdf.set_y(max(left_block_bottom, pdf.get_y()) + 10)
-
-
-
-    # Move safely below header blocks
     pdf.set_y(left_block_bottom + 10)
 
     # Invoice title
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 8, f"Payroll Invoice - {department}", ln=True, align="C")
 
-    # Month (BOLD)
     pdf.set_font("Arial", "B", 11)
     pdf.cell(0, 8, invoice_month, ln=True, align="C")
     pdf.ln(4)
 
-    # Table
+    # Table header
     pdf.set_font("Arial", "B", 9)
     widths = [10, 85, 15, 30, 30]
     headers = ["No.", "Description", "Qty", "U.Price", "Amount"]
@@ -266,6 +257,7 @@ def export_pdf(df, invoice_month, department):
         pdf.cell(widths[i], 8, h, 1, align="C")
     pdf.ln()
 
+    # Table rows
     pdf.set_font("Arial", "", 9)
     for _, r in df.iterrows():
         pdf.cell(widths[0], 8, str(int(r["No."])), 1, align="C")
@@ -293,10 +285,9 @@ def export_pdf(df, invoice_month, department):
     sen = int(round((total - ringgit) * 100))
 
     words = (
-    f"{num2words(ringgit, lang='en').title()} Ringgit"
-    + (f" And {num2words(sen, lang='en').title()} Sen" if sen else "")
-)
-
+        f"{num2words(ringgit, lang='en').title()} Ringgit"
+        + (f" And {num2words(sen, lang='en').title()} Sen" if sen else "")
+    )
 
     pdf.set_font("Arial", "", 9)
     pdf.multi_cell(0, 5, f"Ringgit Malaysia:\n{words} Only.")
@@ -323,5 +314,4 @@ st.download_button(
     mime="application/pdf",
     use_container_width=True
 )
-
 
