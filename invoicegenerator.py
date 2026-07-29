@@ -4,7 +4,18 @@ from io import BytesIO
 from fpdf import FPDF
 from datetime import datetime
 from num2words import num2words
+from decimal import Decimal, ROUND_HALF_UP
 import re
+
+# ─────────────────────────────────────────────────────
+# Rounding helper — always rounds half up (5 in the 3rd
+# decimal always rounds the 2nd decimal up), unlike
+# Python's built-in round() which uses banker's rounding.
+# ─────────────────────────────────────────────────────
+def round2(value):
+    return float(
+        Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    )
 
 # ─────────────────────────────────────────────────────
 # Page config
@@ -28,6 +39,7 @@ if not uploaded:
 # ─────────────────────────────────────────────────────
 filename = uploaded.name.upper()
 
+# Capture department name before first underscore
 dept_match = re.match(r"([A-Z ]+?)_", filename)
 
 department = (
@@ -91,10 +103,6 @@ df = pd.read_excel(
 
 df.columns = [str(c).strip() for c in df.columns]
 
-# FIX: Drop blank rows (e.g. blank rows before ABSCOND section)
-# that were being included in the active employee count
-df = df[pd.to_numeric(df['Emp No'], errors='coerce').notna()].reset_index(drop=True)
-
 def numcol(name):
     if name in df.columns:
         return pd.to_numeric(df[name], errors="coerce").fillna(0.0)
@@ -127,17 +135,17 @@ if gross.sum() == 0:
         numcol("Backpay OT")
     )
 
-wages = (gross - OT_total).sum()
-ot_sum = OT_total.sum()
+wages = round2((gross - OT_total).sum())
+ot_sum = round2(OT_total.sum())
 
-emp_stat = (
+emp_stat = round2((
     numcol("EPF ER") +
     numcol("Socso ER") +
     numcol("EIS ER")
-).sum()
+).sum())
 
-hrdf = numcol("HRDF").sum()
-medical = numcol("Medical Fee").sum()
+hrdf = round2(numcol("HRDF").sum())
+medical = round2(numcol("Medical Fee").sum())
 
 active_headcount = len(df)
 
@@ -157,8 +165,8 @@ insurance_qty = st.number_input(
     value=int(active_headcount)
 )
 
-insurance_amount = insurance_qty * insurance_fee
-mgmt_fee = round((wages + ot_sum + emp_stat + hrdf) * mgmt_rate, 2)
+insurance_amount = round2(insurance_qty * insurance_fee)
+mgmt_fee = round2((wages + ot_sum + emp_stat + hrdf) * mgmt_rate)
 
 # ─────────────────────────────────────────────────────
 # Invoice Table
@@ -173,16 +181,15 @@ invoice_df = pd.DataFrame([
     (7, f"{int(mgmt_rate*100)}% Management Fee", 1, mgmt_fee, mgmt_fee),
 ], columns=["No.", "Description", "Qty", "U.Price", "Amount"])
 
-subtotal = invoice_df["Amount"].sum()
-sst = round(subtotal * sst_rate, 2)
-total = round(subtotal + sst, 2)
+subtotal = round2(invoice_df["Amount"].sum())
+sst = round2(subtotal * sst_rate)
+total = round2(subtotal + sst)
 
 # ─────────────────────────────────────────────────────
 # Preview
 # ─────────────────────────────────────────────────────
 st.subheader(f"🧾 Invoice Preview — {department}")
 st.markdown(f"**{invoice_month}**")
-st.markdown(f"**Active Headcount (after blank-row filter):** {active_headcount}")
 
 st.dataframe(
     invoice_df.style.format({
@@ -209,11 +216,16 @@ def export_pdf(df, invoice_month, department):
     pdf.cell(0, 12, "SUMMARY", ln=True, align="C")
     pdf.ln(6)
 
+
+    # Header
     # ───────────── Header Blocks (Aligned) ─────────────
+
     pdf.set_font("Arial", "", 9)
 
+    # Capture starting Y for alignment
     header_y = pdf.get_y()
 
+    # Left: Company details
     pdf.multi_cell(
         90, 5,
         "DEXCOM MALAYSIA SDN BHD\n"
@@ -223,8 +235,10 @@ def export_pdf(df, invoice_month, department):
         "Attention: HR Department"
     )
 
+    # Capture bottom of left block
     left_block_bottom = pdf.get_y()
 
+    # Right: Invoice meta (aligned to top of left block)
     pdf.set_xy(120, header_y)
     pdf.set_font("Arial", "B", 9)
 
@@ -237,18 +251,24 @@ def export_pdf(df, invoice_month, department):
     pdf.set_x(120)
     pdf.cell(0, line_gap, "PO Number:", ln=True)
 
+    # Move cursor below both blocks safely
     pdf.set_y(max(left_block_bottom, pdf.get_y()) + 10)
+
+
+
+    # Move safely below header blocks
     pdf.set_y(left_block_bottom + 10)
 
     # Invoice title
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 8, f"Payroll Invoice - {department}", ln=True, align="C")
 
+    # Month (BOLD)
     pdf.set_font("Arial", "B", 11)
     pdf.cell(0, 8, invoice_month, ln=True, align="C")
     pdf.ln(4)
 
-    # Table header
+    # Table
     pdf.set_font("Arial", "B", 9)
     widths = [10, 85, 15, 30, 30]
     headers = ["No.", "Description", "Qty", "U.Price", "Amount"]
@@ -257,7 +277,6 @@ def export_pdf(df, invoice_month, department):
         pdf.cell(widths[i], 8, h, 1, align="C")
     pdf.ln()
 
-    # Table rows
     pdf.set_font("Arial", "", 9)
     for _, r in df.iterrows():
         pdf.cell(widths[0], 8, str(int(r["No."])), 1, align="C")
@@ -285,9 +304,10 @@ def export_pdf(df, invoice_month, department):
     sen = int(round((total - ringgit) * 100))
 
     words = (
-        f"{num2words(ringgit, lang='en').title()} Ringgit"
-        + (f" And {num2words(sen, lang='en').title()} Sen" if sen else "")
-    )
+    f"{num2words(ringgit, lang='en').title()} Ringgit"
+    + (f" And {num2words(sen, lang='en').title()} Sen" if sen else "")
+)
+
 
     pdf.set_font("Arial", "", 9)
     pdf.multi_cell(0, 5, f"Ringgit Malaysia:\n{words} Only.")
@@ -314,4 +334,3 @@ st.download_button(
     mime="application/pdf",
     use_container_width=True
 )
-
