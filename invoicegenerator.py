@@ -8,14 +8,21 @@ from decimal import Decimal, ROUND_HALF_UP
 import re
 
 # ─────────────────────────────────────────────────────
-# Rounding helper — always rounds half up (5 in the 3rd
-# decimal always rounds the 2nd decimal up), unlike
-# Python's built-in round() which uses banker's rounding.
+# Decimal helpers — all rate/percentage math below is
+# done in Decimal, not float. Floats like 0.15 or sums
+# such as 1113.10 cannot always be represented exactly
+# in binary, so a "clean" value like 166.965 can quietly
+# become 166.96499999999997 before it's ever rounded.
+# Doing the multiplication itself in Decimal avoids that,
+# and round2() then always rounds half up (5 in the 3rd
+# decimal rounds the 2nd decimal up) instead of Python's
+# built-in round(), which uses banker's rounding.
 # ─────────────────────────────────────────────────────
+def D(value):
+    return Decimal(str(value))
+
 def round2(value):
-    return float(
-        Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    )
+    return float(D(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 # ─────────────────────────────────────────────────────
 # Page config
@@ -165,8 +172,8 @@ insurance_qty = st.number_input(
     value=int(active_headcount)
 )
 
-insurance_amount = round2(insurance_qty * insurance_fee)
-mgmt_fee = round2((wages + ot_sum + emp_stat + hrdf) * mgmt_rate)
+insurance_amount = round2(D(insurance_qty) * D(insurance_fee))
+mgmt_fee = round2((D(wages) + D(ot_sum) + D(emp_stat) + D(hrdf)) * D(mgmt_rate))
 
 # ─────────────────────────────────────────────────────
 # Invoice Table
@@ -181,9 +188,9 @@ invoice_df = pd.DataFrame([
     (7, f"{int(mgmt_rate*100)}% Management Fee", 1, mgmt_fee, mgmt_fee),
 ], columns=["No.", "Description", "Qty", "U.Price", "Amount"])
 
-subtotal = round2(invoice_df["Amount"].sum())
-sst = round2(subtotal * sst_rate)
-total = round2(subtotal + sst)
+subtotal = round2(sum(D(a) for a in invoice_df["Amount"]))
+sst = round2(D(subtotal) * D(sst_rate))
+total = round2(D(subtotal) + D(sst))
 
 # ─────────────────────────────────────────────────────
 # Preview
